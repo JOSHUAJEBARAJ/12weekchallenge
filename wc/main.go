@@ -13,12 +13,21 @@ type InputFlags struct {
 	LineCountFlag      bool
 	CharacterCountFlag bool
 	WordCountFlag      bool
+	totalCountFlag     bool
 }
 
 type Output struct {
 	LineCount      int
 	WordCount      int
 	CharacterCount int
+}
+
+var hasErrorsBool bool
+
+type TotalCountOutput struct {
+	TotalLineCount      int
+	TotalWordCount      int
+	TotalCharacterCount int
 }
 
 func OpenFile(fileName string) (*os.File, error) {
@@ -41,29 +50,50 @@ func countAll(r io.Reader) Output {
 
 		out.LineCount = out.LineCount + 1
 		out.WordCount = len(strings.Fields(scanner.Text())) + out.WordCount
-		out.CharacterCount = len([]rune(scanner.Text())) + out.CharacterCount
+		out.CharacterCount = len([]rune(scanner.Text())) + out.CharacterCount + 1
 
+	}
+	fmt.Println(out.LineCount)
+	if err := scanner.Err(); err != nil {
+		PrintErr(err)
 	}
 
 	return out
 
 }
 
-func FormatOutput(i InputFlags, o Output) string {
+func FormatOutput(i InputFlags, o Output, name string) string {
 
 	var parts []string
 	if i.LineCountFlag {
-		parts = append(parts, fmt.Sprintf("%d", o.LineCount))
+		parts = append(parts, fmt.Sprintf("%8d", o.LineCount))
 	}
 	if i.WordCountFlag {
-		parts = append(parts, fmt.Sprintf("%d", o.WordCount))
+		parts = append(parts, fmt.Sprintf("%8d", o.WordCount))
 	}
 	if i.CharacterCountFlag {
-		parts = append(parts, fmt.Sprintf("%d", o.CharacterCount))
+		parts = append(parts, fmt.Sprintf("%8d", o.CharacterCount))
+	}
+	return fmt.Sprintf("%s %s", strings.Join(parts, " "), name)
+
+}
+
+func FormatFinalOutput(i InputFlags, o TotalCountOutput) string {
+
+	var parts []string
+	if i.LineCountFlag {
+		parts = append(parts, fmt.Sprintf("%8d", o.TotalLineCount))
+	}
+	if i.WordCountFlag {
+		parts = append(parts, fmt.Sprintf("%8d", o.TotalWordCount))
+	}
+	if i.CharacterCountFlag {
+		parts = append(parts, fmt.Sprintf("%8d", o.TotalCharacterCount))
 	}
 	return strings.Join(parts, " ")
 
 }
+
 func main() {
 
 	var lcountFlag, wcountFlag, ccountFlag bool
@@ -87,25 +117,58 @@ func main() {
 		input.WordCountFlag = true
 	}
 
+	var to TotalCountOutput
+	if len(flag.Args()) >= 2 {
+		input.totalCountFlag = true
+
+	} else {
+		input.totalCountFlag = false
+	}
+	if len(fileNames) == 0 {
+
+		out := countAll(os.Stdin)
+		output := FormatOutput(input, out, "")
+		fmt.Println(output)
+
+	}
 	for _, file := range fileNames {
 		// open the file
 		f, err := OpenFile(file)
-		defer f.Close()
+
 		if err != nil {
 			PrintErr(err)
+			continue
 		}
+		defer f.Close()
 
 		out := countAll(f)
-		finalOutput := FormatOutput(input, out)
-		finalOutput = fmt.Sprintf("   %s %s", finalOutput, file)
+		if input.totalCountFlag {
+			to.TotalCharacterCount += out.CharacterCount
+			to.TotalLineCount += out.LineCount
+			to.TotalWordCount += out.WordCount
+
+		}
+		finalOutput := FormatOutput(input, out, file)
 		fmt.Println(finalOutput)
 
 	}
+	if input.totalCountFlag {
+		finalTotalOutput := FormatFinalOutput(input, to)
+		finalOutput := fmt.Sprintf("%s total", finalTotalOutput)
+		fmt.Println(finalOutput)
+	}
+
+	defer func() {
+		if hasErrorsBool {
+			os.Exit(1)
+		}
+
+	}()
 
 }
 
 func PrintErr(err error) {
 
 	fmt.Fprintln(os.Stderr, err)
-	os.Exit(1)
+	hasErrorsBool = true
 }
